@@ -1,0 +1,176 @@
+name: Branch Management
+on:
+  push:
+    branches: ["dev", "stage", "prod"]
+  pull_request:
+    branches: ["stage", "prod"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  # Development management
+  development-job:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run development checks
+        run: |
+          echo "Running development checks..."
+          echo "For now nothing is here..."
+          # Add your development-specific checks here
+          # Like linting, testing, etc.
+  
+
+  # Branch synchronization
+  sync-branches-development:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stage'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Set up Git user (local)
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          
+      - name: Sync development with staging
+        run: |
+          git checkout dev
+          git pull origin dev
+          git merge --no-ff origin/stage
+          git push origin dev
+  
+  # Staging deployment
+  staging-job:
+    runs-on: ubuntu-latest
+    needs: sync-branches-development
+    if: github.ref == 'refs/heads/stage'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run staging checks
+        run: |
+          echo "Running staging environment checks..."
+          echo "For now nothing is here..."
+          # Add your staging-specific checks here
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          git fetch origin production
+          CHANGES=$(git log origin/prod..origin/stage --oneline)
+          if [ -n "$CHANGES" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes found:"
+            echo "$CHANGES"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes found between staging and production"
+          fi
+
+      - name: Create PR to production
+        if: steps.check_changes.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          title: "🚀 Deploy: Staging to Production"
+          body: |
+            # Staging to Production Deployment
+            
+            New changes ready to be deployed to production.
+            
+            ## Changes:
+            ${{ github.event.head_commit.message }}
+          branch: "stage"
+          base: "prod"
+          labels: |
+            deploy
+          reviewers: ${{ github.actor }}
+       
+      - name: No changes found
+        if: steps.check_changes.outputs.has_changes == 'false'
+        run: |
+          echo "⚠️ No changes found between staging and production branches."
+          echo "No PR created as branches are already in sync."
+
+      - name: Display PR info
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          echo "PR created from staging to production"
+          echo "Changes to be deployed:"
+          git log prod..stage --oneline
+  
+
+  sync-branches-production:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stage'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git user (local)
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Sync production with staging
+        run: |
+          git checkout prod
+          git pull origin prod
+          git merge --no-ff origin/stage
+          git push origin prod
+  # Production deployment
+  production-job:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/prod'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run production deployment checks
+        run: |
+          echo "Running production deployment checks..."
+          # Add your production-specific checks here
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production..."
+          # Add your deployment steps here  
+
+  # PR validation
+  validate-pr:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Validate branch rules
+        run: |
+          if [[ "${{ github.base_ref }}" == "prod" && "${{ github.head_ref }}" != "satge" ]]; then
+            echo "❌ Production can only be updated from staging"
+            exit 1
+          fi
+          
+          if [[ "${{ github.base_ref }}" == "stage" && "${{ github.head_ref }}" != "dev" ]]; then
+            echo "❌ Staging can only be updated from development"
+            exit 1
+          fi
