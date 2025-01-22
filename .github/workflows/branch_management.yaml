@@ -117,6 +117,27 @@ jobs:
 
   sync-branches-production:
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/prod'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git user (local)
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Sync production with staging
+        run: |
+          git checkout dev
+          git pull origin dev
+          git merge --no-ff origin/prod
+          git push origin dev
+
+  sync-branches-dev-from-prod:
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/stage'
     steps:
       - name: Checkout
