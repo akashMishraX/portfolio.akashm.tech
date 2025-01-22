@@ -72,7 +72,7 @@ jobs:
       - name: Check for changes
         id: check_changes
         run: |
-          git fetch origin production
+          git fetch origin prod
           CHANGES=$(git log origin/prod..origin/stage --oneline)
           if [ -n "$CHANGES" ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
